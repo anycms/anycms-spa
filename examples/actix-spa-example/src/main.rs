@@ -1,22 +1,8 @@
-# Web 框架的 SPA 功能集成
-
-## 使用方法
-### 添加依赖
-```toml
-anycms-spa = "*"    
-rust-embed = "8.7.2"
-paste = "1.0.15"
-```
-
-## 示例代码
-### Actix 示例代码
-```rust 
 
 use actix_web::{App, HttpResponse, HttpServer, Responder, get, web};
 use anycms_spa::spa;
 use tracing::info;
 
-// spa!(name,assets_path, route_prefix, index)]
 spa!(Spa, "assets", "/", ["index.html"]);
 spa!(Dashboard, "dashboard", "/dashboard", ["index.html"]);
 
@@ -41,5 +27,3 @@ async fn main() -> anyhow::Result<()> {
 pub async fn index() -> impl Responder {
     HttpResponse::Ok().body("Hello world!")
 }
-
-```
