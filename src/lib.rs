@@ -6,7 +6,7 @@ pub mod actix;
 
 
 // 重新导出宏
-pub use crate::{create_actix_spa as spa, spa as env_aware_spa};
+pub use crate::{create_actix_spa as spa};
 
 
 // 通用错误类型
