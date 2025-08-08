@@ -1,0 +1,20 @@
+[package]
+name = "anycms-spa"
+version = "0.1.0"
+edition = "2024"
+
+authors = ["Liangdi<wu@liangid.me>"]
+description = "SPA intergration with Web Frameworks"
+keywords = ["anycms","spa","actix-web","axum"]
+homepage = "https://anycms.org"
+repository = "https://github.com/anycms/anycms-spa"
+license = "MIT"
+
+[dependencies]
+actix-web = "4.11.0"
+lazy_static = "1.5.0"
+mime_guess = "2.0.5"
+regex = "1.11.1"
+rust-embed = "8.7.2"
+thiserror = "2.0.12"
+tracing = "0.1.41"
