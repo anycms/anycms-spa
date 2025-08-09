@@ -240,10 +240,9 @@ dependencies = [
 
 [[package]]
 name = "anycms-spa"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "actix-web",
- "lazy_static",
  "mime_guess",
  "paste",
  "regex",
