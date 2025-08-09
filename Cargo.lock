@@ -226,7 +226,7 @@ dependencies = [
 
 [[package]]
 name = "anycms-spa"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "actix-web",
  "mime_guess",
