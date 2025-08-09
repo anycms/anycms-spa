@@ -1,4 +1,4 @@
-## [0.2.0] - 2025-08-09
+## [0.2.1] - 2025-08-09
 
 ### 🚀 Features
 
@@ -12,6 +12,7 @@
 ### 📚 Documentation
 
 - Actix-web 示例代码
+- 更新 README ，axum 示例代码
 
 ### ⚙️ Miscellaneous Tasks
 
@@ -20,3 +21,4 @@
 - Add examples assets file
 - Release anycms-spa version 0.1.2
 - 添加 axum 示例代码
+- Release anycms-spa version 0.2.0
