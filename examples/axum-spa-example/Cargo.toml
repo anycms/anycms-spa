@@ -1,15 +1,13 @@
 [package]
-name = "actix-spa-example"
+name = "axum-spa-example"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-actix-web = "4.11.0"
+axum = "0.8.4"
+paste = "1.0.15"
+rust-embed = "8.7.2"
 tokio = { version = "1.47.1", features = ["full"] }
 tracing = "0.1.41"
 tracing-subscriber = "0.3.19"
-
-anycms-spa = { path = "../../",features = ["actix"] }
-anyhow = "1.0.98"
-rust-embed = "8.7.2"
-paste = "1.0.15"
+anycms-spa = {path = "../../",features = ["axum"]}
