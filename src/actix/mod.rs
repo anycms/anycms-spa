@@ -23,7 +23,6 @@ impl<E: rust_embed::RustEmbed> ActixSpa<E> {
     ) -> Result<impl actix_web::Responder, SpaError> {
         let path = req.path();
         let clean_path = PATH_RE.get().unwrap().replace_all(path, "/");
-
         let (content, mime) = self.handler.get_file(&clean_path)?;
 
         let mut response = HttpResponse::Ok();
@@ -39,13 +38,13 @@ impl<E: rust_embed::RustEmbed> ActixSpa<E> {
 }
 
 #[macro_export]
-macro_rules! create_actix_spa {
+macro_rules! spa {
     ($struct:ident, $path:expr) => {
-        create_actix_spa!($struct, $path, "/", ["index.html"]);
+        spa!($struct, $path, "/", ["index.html"]);
     };
 
     ($struct:ident, $path:expr, $base:expr) => {
-        create_actix_spa!($struct, $path, $base, ["index.html"]);
+        spa!($struct, $path, $base, ["index.html"]);
     };
 
     ($struct:ident, $path:expr, $base:expr, [$($index:expr),*]) => {

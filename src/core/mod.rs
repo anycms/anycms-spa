@@ -70,11 +70,9 @@ impl<E: RustEmbed> SpaHandler<E> {
     /// 获取嵌入的文件（考虑基础路径）
     pub fn get_file(&self, request_path: &str) -> Result<(Cow<'static, [u8]>, &'static str), SpaError> {
         // 规范化请求路径
-        let normalized_path = crate::core::path::normalize_path(request_path, &self.config.base_path)?;
-        
+        let normalized_path = crate::core::path::normalize_path(request_path)?;
         // 获取相对于基础路径的资源路径
         let resource_path = crate::core::path::relative_to_base(&normalized_path, &self.config.base_path);
-        
         // 尝试获取资源
         if let Some(content) = E::get(&resource_path) {
             let mime = mime_guess::from_path(&resource_path)

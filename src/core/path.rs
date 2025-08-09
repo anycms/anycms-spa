@@ -11,12 +11,8 @@ pub enum PathError {
 }
 
 /// 路径规范化工具
-pub fn normalize_path(path: &str, base: &str) -> Result<String, PathError> {
-    let full_path = if base.is_empty() {
-        path.to_string()
-    } else {
-        format!("{}/{}", base.trim_matches('/'), path.trim_matches('/'))
-    };
+pub fn normalize_path(path: &str) -> Result<String, PathError> {
+    let full_path = path.to_string();
     
     let normalized = Path::new(&full_path)
         .components()
@@ -39,13 +35,7 @@ pub fn normalize_path(path: &str, base: &str) -> Result<String, PathError> {
     }
     
     let normalized_str = normalized.to_string_lossy().to_string();
-    
-    // 确保路径以斜杠开头
-    if normalized_str.starts_with('/') {
-        Ok(normalized_str)
-    } else {
-        Ok(format!("/{}", normalized_str))
-    }
+    Ok(normalized_str)
 }
 
 /// 提取相对于基路径的路径
@@ -54,7 +44,6 @@ pub fn relative_to_base(path: &str, base: &str) -> String {
     if base.is_empty() {
         return path.to_string();
     }
-    
     let re = Regex::new(&format!("^{}/?", base)).unwrap();
     let relative = re.replace(path, "");
     
@@ -71,9 +60,9 @@ mod tests {
 
     #[test]
     fn test_normalize_path() {
-        assert_eq!(normalize_path("a/b/../c", "").unwrap(), "/a/c");
-        assert_eq!(normalize_path("/a//b/", "").unwrap(), "/a/b");
-        assert_eq!(normalize_path("", "base").unwrap(), "/base");
+        assert_eq!(normalize_path("a/b/../c").unwrap(), "/a/c");
+        assert_eq!(normalize_path("/a//b/").unwrap(), "/a/b");
+        assert_eq!(normalize_path("").unwrap(), "/base");
     }
 
     #[test]
