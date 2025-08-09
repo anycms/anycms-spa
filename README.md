@@ -63,4 +63,34 @@ pub async fn index() -> impl Responder {
 
 ### Axum 示例代码
 ```rust
+use anycms_spa::spa;
+use axum::{
+    routing::get, Router
+};
+spa!(Spa, "assets");
+spa!(Dashboard, "dashboard", "/dashboard", ["index.html"]);
+
+#[tokio::main]
+async fn main() {
+    // initialize tracing
+    tracing_subscriber::fmt::init();
+
+    // build our application with a route
+    let app = Router::new()
+        // `GET /` goes to `root`
+        
+        .route("/home", get(root))
+        .merge(Dashboard::spa_router())
+        .merge(Spa::spa_router());
+
+    // run our app with hyper, listening globally on port 3000
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
+    axum::serve(listener, app).await.unwrap();
+}
+
+// basic handler that responds with a static string
+async fn root() -> &'static str {
+    "Hello, World!"
+}
+
 ```
