@@ -2,13 +2,13 @@ dev:
     cargo run
 
 publish:
-    cargo publish
+    cargo publish --registry crates-io
 
 release-patch:
-    cargo release patch --execute
+    cargo release patch --no-publish --execute
 
 release-minor:
-    cargo release minor --execute
+    cargo release minor --no-publish --execute
 
 release-major:
-    cargo release major --execute
+    cargo release major --no-publish --execute
