@@ -12,3 +12,6 @@ release-minor:
 
 release-major:
     cargo release major --no-publish --execute
+
+upgrade:
+    cargo +nightly update --breaking -Z unstable-options

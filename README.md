@@ -4,10 +4,11 @@
 ### 添加依赖
 ```toml
 # actix-web 框架
-anycms-spa = {version ="*",features = ["actix"]}    
+anycms-spa = {version ="*",features = ["actix"]}
 # axum 框架
-anycms-spa = {version ="*",features = ["axum"]}   
+anycms-spa = {version ="*",features = ["axum"]}
 
+# 注意:由于 `rust-embed` 是过程宏,需要手动添加以下依赖
 rust-embed = "8.7.2"
 paste = "1.0.15"
 ```

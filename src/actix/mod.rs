@@ -48,18 +48,18 @@ macro_rules! spa {
     };
 
     ($struct:ident, $path:expr, $base:expr, [$($index:expr),*]) => {
-    
+
         #[derive(rust_embed::RustEmbed)]
         #[folder = $path]
         pub struct $struct;
-          
+
         paste::paste!{
 
             pub mod [<mod_ $struct:lower>] {
                 pub static CONFIG: std::sync::OnceLock<anycms_spa::core::SpaConfig> = std::sync::OnceLock::new();
                 pub static SPA: std::sync::OnceLock<anycms_spa::actix::ActixSpa<crate::$struct>> = std::sync::OnceLock::new();
             }
-        
+
             impl $struct {
                 pub fn spa_service() -> actix_web::Resource {
                     use actix_web::web;
@@ -84,6 +84,6 @@ macro_rules! spa {
                 }
             }
         }
-        
+
     };
 }

@@ -63,18 +63,18 @@ macro_rules! spa {
                 pub static CONFIG: std::sync::OnceLock<anycms_spa::core::SpaConfig> = std::sync::OnceLock::new();
                 pub static SPA: std::sync::OnceLock<anycms_spa::axum::AxumSpa<crate::$struct>> = std::sync::OnceLock::new();
             }
-        
+
             impl $struct {
-                
+
                 pub fn spa_router() -> axum::Router {
                     use axum::{routing::get, Router};
-                    
-                   
+
+
                     [<mod_ $struct:lower>]::CONFIG.get_or_init(|| anycms_spa::core::SpaConfig::default()
                             .with_base_path($base)
                             .with_index_files(&[$($index),*]));
                     [<mod_ $struct:lower>]::SPA.get_or_init(|| anycms_spa::axum::AxumSpa::new([<mod_ $struct:lower>]::CONFIG.get().unwrap().clone()));
-                    
+
                     let base = $base.trim_matches('/');
                     let route_path = if base.is_empty() {
                         "/".to_string()
@@ -99,15 +99,15 @@ macro_rules! spa {
                         };
                     Router::new()
                         .route(
-                        &route_path_all, 
+                        &route_path_all,
                         get(svr))
                         .route(
-                            &route_path, 
+                            &route_path,
                             get(svr))
                 }
             }
         }
-        
-        
+
+
     };
 }
