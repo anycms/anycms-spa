@@ -5,7 +5,7 @@ edition = "2024"
 
 authors = ["Liangdi<wu@liangid.me>"]
 description = "SPA integration with Web Frameworks"
-keywords = ["anycms","spa","actix-web","axum"]
+keywords = ["anycms","spa","actix-web","axum","salvo"]
 homepage = "https://anycms.org"
 repository = "https://github.com/anycms/anycms-spa"
 license = "MIT"
@@ -16,6 +16,7 @@ axum = {version = "0.8.8",optional = true}
 mime_guess = "2.0.5"
 paste = "1.0.15"
 rust-embed = "8.9.0"
+salvo = {version = "0.93.0",optional = true}
 thiserror = "2.0.17"
 tracing = "0.1.44"
 
@@ -23,3 +24,4 @@ tracing = "0.1.44"
 default = []
 actix = ["dep:actix-web"]
 axum = ["dep:axum"]
+salvo = ["dep:salvo"]

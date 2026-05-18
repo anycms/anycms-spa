@@ -1,42 +1,52 @@
 # Web 框架的 SPA 功能集成
 
+支持 Actix-web、Axum、Salvo 三大框架，通过统一的 `spa!` 宏将前端静态资源嵌入 Rust 二进制文件并提供 SPA 路由服务。
+
 ## 使用方法
+
 ### 添加依赖
+
 ```toml
 # actix-web 框架
-anycms-spa = {version ="*",features = ["actix"]}
+anycms-spa = { version = "*", features = ["actix"] }
 # axum 框架
-anycms-spa = {version ="*",features = ["axum"]}
+anycms-spa = { version = "*", features = ["axum"] }
+# salvo 框架
+anycms-spa = { version = "*", features = ["salvo"] }
 
-# 注意:由于 `rust-embed` 是过程宏,需要手动添加以下依赖
-rust-embed = "8.7.2"
+# 注意：features 互斥，只能启用一个框架
+
+# 由于 `rust-embed` 是过程宏，需要手动添加以下依赖
+rust-embed = "8.9.0"
 paste = "1.0.15"
 ```
 
 ### `spa!` 宏使用
+
 > 宏需要用在 main.rs 或者 lib.rs 文件中
+
 ```rust
-/// spa!(名称,资源路径, 路由前缀, [index文件名称数组])
-/// 路由前缀和 index 文件名数组 可选
-///spa!(name, assets_path, route_prefix, [index])
+/// spa!(名称, 资源路径, 路由前缀, [index 文件名称数组])
+/// 路由前缀和 index 文件名数组可选
 spa!(Spa, "assets");
 /// 等价于
 spa!(Spa, "assets", "/", ["index.html"]);
 
+/// 带路由前缀的 Dashboard
+spa!(Dashboard, "dashboard", "/dashboard", ["index.html"]);
 ```
 
 ## 示例代码
-### Actix 示例代码
-```rust 
 
-use actix_web::{App, HttpResponse, HttpServer, Responder, get, web};
+### Actix-web 示例
+
+```rust
+use actix_web::{App, HttpResponse, HttpServer, Responder, get};
 use anycms_spa::spa;
 use tracing::info;
 
-// spa!(name,assets_path, route_prefix, index)]
 spa!(Spa, "assets", "/", ["index.html"]);
 spa!(Dashboard, "dashboard", "/dashboard", ["index.html"]);
-
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -46,7 +56,7 @@ async fn main() -> anyhow::Result<()> {
         App::new()
             .service(index)
             .service(Dashboard::spa_service())
-            .service(Spa::spa_service()) 
+            .service(Spa::spa_service())
     })
     .bind("127.0.0.1:8080")?
     .run()
@@ -58,40 +68,78 @@ async fn main() -> anyhow::Result<()> {
 pub async fn index() -> impl Responder {
     HttpResponse::Ok().body("Hello world!")
 }
-
 ```
 
+### Axum 示例
 
-### Axum 示例代码
 ```rust
 use anycms_spa::spa;
-use axum::{
-    routing::get, Router
-};
+use axum::{routing::get, Router};
+
 spa!(Spa, "assets");
 spa!(Dashboard, "dashboard", "/dashboard", ["index.html"]);
 
 #[tokio::main]
 async fn main() {
-    // initialize tracing
     tracing_subscriber::fmt::init();
 
-    // build our application with a route
     let app = Router::new()
-        // `GET /` goes to `root`
-        
         .route("/home", get(root))
         .merge(Dashboard::spa_router())
         .merge(Spa::spa_router());
 
-    // run our app with hyper, listening globally on port 3000
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
     axum::serve(listener, app).await.unwrap();
 }
 
-// basic handler that responds with a static string
 async fn root() -> &'static str {
     "Hello, World!"
 }
-
 ```
+
+### Salvo 示例
+
+```rust
+use anycms_spa::spa;
+use salvo::prelude::*;
+
+spa!(Spa, "assets");
+spa!(Dashboard, "dashboard", "/dashboard", ["index.html"]);
+
+#[handler]
+async fn home(res: &mut Response) {
+    res.render(Text::Plain("Hello, World!"));
+}
+
+#[tokio::main]
+async fn main() {
+    tracing_subscriber::fmt::init();
+
+    let router = Router::new()
+        .push(Router::with_path("/home").get(home))
+        .push(Dashboard::spa_router())
+        .push(Spa::spa_router());
+
+    let listener = TcpListener::new("0.0.0.0:3000").bind().await;
+    Server::new(listener).serve(router).await;
+}
+```
+
+## API 对比
+
+| 框架 | 宏生成的方法 | 返回类型 |
+|------|-------------|---------|
+| Actix-web | `Struct::spa_service()` | `actix_web::Resource` |
+| Axum | `Struct::spa_router()` | `axum::Router` |
+| Salvo | `Struct::spa_router()` | `salvo::Router` |
+
+## 路由行为
+
+- 静态资源（JS/CSS/图片等）：直接返回，设置 `Cache-Control: public, max-age=31536000`
+- HTML 页面：设置 `Cache-Control: no-cache`
+- 未匹配路径：SPA fallback，返回 `index.html`，实现前端路由
+- 路径遍历防护：自动拒绝包含 `..` 的恶意路径
+
+## 完整示例
+
+查看 [examples/](examples/) 目录获取可运行的完整项目。

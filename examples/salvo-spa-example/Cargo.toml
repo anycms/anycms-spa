@@ -1,0 +1,13 @@
+[package]
+name = "salvo-spa-example"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+salvo = "0.93.0"
+rust-embed = "8.9.0"
+paste = "1.0.15"
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1.44"
+tracing-subscriber = "0.3.19"
+anycms-spa = { path = "../../", features = ["salvo"] }
