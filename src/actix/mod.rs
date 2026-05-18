@@ -1,9 +1,5 @@
-use std::sync::OnceLock;
-use crate::core::{SpaConfig, SpaError, SpaHandler};
+use crate::core::{SpaConfig, SpaHandler};
 use actix_web::{HttpRequest, HttpResponse};
-use regex::Regex;
-
-static PATH_RE: OnceLock<Regex> = OnceLock::new();
 
 pub struct ActixSpa<E: rust_embed::RustEmbed> {
     handler: SpaHandler<E>,
@@ -11,33 +7,36 @@ pub struct ActixSpa<E: rust_embed::RustEmbed> {
 
 impl<E: rust_embed::RustEmbed> ActixSpa<E> {
     pub fn new(config: SpaConfig) -> Self {
-        PATH_RE.get_or_init(|| Regex::new(r"/+").unwrap());
         Self {
             handler: SpaHandler::new(config),
         }
     }
 
-    pub async fn handle_request(
-        &self,
-        req: HttpRequest,
-    ) -> Result<impl actix_web::Responder, SpaError> {
+    pub async fn handle_request(&self, req: HttpRequest) -> HttpResponse {
         let path = req.path();
-        let clean_path = PATH_RE.get().unwrap().replace_all(path, "/");
-        let (content, mime) = self.handler.get_file(&clean_path)?;
+        match self.handler.get_file(path) {
+            Ok((content, mime)) => {
+                let mut response = HttpResponse::Ok();
+                response.content_type(mime);
 
-        let mut response = HttpResponse::Ok();
-        response.content_type(mime);
+                if mime.starts_with("text/html") {
+                    response.insert_header(("Cache-Control", "no-cache"));
+                } else {
+                    response.insert_header(("Cache-Control", "public, max-age=31536000"));
+                }
 
-        // 缓存优化：非HTML资源长期缓存
-        if !mime.starts_with("text/html") {
-            response.insert_header(("Cache-Control", "public, max-age=31536000"));
+                response.body(content)
+            }
+            Err(e) => {
+                tracing::warn!("SPA resource not found: {} - {}", path, e);
+                HttpResponse::NotFound().finish()
+            }
         }
-
-        Ok(response.body(content))
     }
 }
 
 #[macro_export]
+#[allow(clippy::crate_in_macro_def)]
 macro_rules! spa {
     ($struct:ident, $path:expr) => {
         spa!($struct, $path, "/", ["index.html"]);
@@ -77,9 +76,7 @@ macro_rules! spa {
 
                     web::resource(&pattern)
                         .to(|req: actix_web::HttpRequest| async move {
-                            let result = [<mod_ $struct:lower>]::SPA.get().unwrap().handle_request(req).await;
-                            // TODO 修复这个 unrwap , 闭包情况下， match 需要返回完全一样的返回类型
-                            result.unwrap()
+                            [<mod_ $struct:lower>]::SPA.get().unwrap().handle_request(req).await
                         })
                 }
             }

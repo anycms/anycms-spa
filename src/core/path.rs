@@ -1,8 +1,7 @@
-use regex::Regex;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use thiserror::Error;
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, PartialEq)]
 pub enum PathError {
     #[error("Invalid path: {0}")]
     InvalidPath(String),
@@ -10,47 +9,61 @@ pub enum PathError {
     PathTraversal,
 }
 
-/// 路径规范化工具
+/// 路径规范化：解析 `.` 和 `..`，去除连续斜杠，防止路径遍历
 pub fn normalize_path(path: &str) -> Result<String, PathError> {
-    let full_path = path.to_string();
-    
-    let normalized = Path::new(&full_path)
-        .components()
-        .fold(PathBuf::new(), |mut acc, comp| {
-            match comp {
-                std::path::Component::Normal(name) => {
-                    acc.push(name);
-                }
-                std::path::Component::ParentDir => {
-                    acc.pop();
-                }
-                _ => {} // 忽略根目录和前缀
+    let mut buf = PathBuf::new();
+    for comp in Path::new(path).components() {
+        match comp {
+            Component::Normal(name) => {
+                buf.push(name);
             }
-            acc
-        });
-    
-    // 防止路径遍历攻击
-    if normalized.to_string_lossy().contains("..") {
-        return Err(PathError::PathTraversal);
+            Component::ParentDir if !buf.pop() => {
+                return Err(PathError::PathTraversal);
+            }
+            Component::ParentDir => {}
+            _ => {}
+        }
     }
-    
-    let normalized_str = normalized.to_string_lossy().to_string();
-    Ok(normalized_str)
+
+    Ok(buf.to_string_lossy().to_string())
 }
 
-/// 提取相对于基路径的路径
+/// 合并连续斜杠为单个 `/`
+pub fn collapse_slashes(path: &str) -> String {
+    let mut result = String::with_capacity(path.len());
+    let mut prev_slash = false;
+    for ch in path.chars() {
+        if ch == '/' {
+            if !prev_slash {
+                result.push(ch);
+            }
+            prev_slash = true;
+        } else {
+            result.push(ch);
+            prev_slash = false;
+        }
+    }
+    result
+}
+
+/// 提取相对于基路径的资源路径
 pub fn relative_to_base(path: &str, base: &str) -> String {
     let base = base.trim_matches('/');
     if base.is_empty() {
-        return path.to_string();
+        return path.trim_start_matches('/').to_string();
     }
-    let re = Regex::new(&format!("^{}/?", base)).unwrap();
-    let relative = re.replace(path, "");
-    
-    if relative.is_empty() {
+    let base_with_slash = format!("{}/", base);
+    let path_no_lead = path.trim_start_matches('/');
+    if let Some(stripped) = path_no_lead.strip_prefix(&base_with_slash) {
+        if stripped.is_empty() {
+            "index.html".to_string()
+        } else {
+            stripped.to_string()
+        }
+    } else if path_no_lead == base {
         "index.html".to_string()
     } else {
-        relative.to_string()
+        path_no_lead.to_string()
     }
 }
 
@@ -60,9 +73,19 @@ mod tests {
 
     #[test]
     fn test_normalize_path() {
-        assert_eq!(normalize_path("a/b/../c").unwrap(), "/a/c");
-        assert_eq!(normalize_path("/a//b/").unwrap(), "/a/b");
-        assert_eq!(normalize_path("").unwrap(), "/base");
+        assert_eq!(normalize_path("a/b/../c").unwrap(), "a/c");
+        assert_eq!(normalize_path("/a//b/").unwrap(), "a/b");
+        assert_eq!(normalize_path("").unwrap(), "");
+        assert_eq!(normalize_path("css/style.css").unwrap(), "css/style.css");
+        assert_eq!(normalize_path("a/../../etc/passwd"), Err(PathError::PathTraversal));
+    }
+
+    #[test]
+    fn test_collapse_slashes() {
+        assert_eq!(collapse_slashes("/a//b///c/"), "/a/b/c/");
+        assert_eq!(collapse_slashes("/"), "/");
+        assert_eq!(collapse_slashes("///"), "/");
+        assert_eq!(collapse_slashes("css//style.css"), "css/style.css");
     }
 
     #[test]
@@ -71,5 +94,6 @@ mod tests {
         assert_eq!(relative_to_base("/app/", "app"), "index.html");
         assert_eq!(relative_to_base("/app/css/style.css", "app"), "css/style.css");
         assert_eq!(relative_to_base("/other", "app"), "other");
+        assert_eq!(relative_to_base("/css/style.css", "/"), "css/style.css");
     }
 }

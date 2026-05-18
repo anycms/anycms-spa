@@ -223,7 +223,6 @@ dependencies = [
  "axum",
  "mime_guess",
  "paste",
- "regex",
  "rust-embed",
  "thiserror",
  "tracing",

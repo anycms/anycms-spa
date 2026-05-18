@@ -1,58 +1,71 @@
-use std::sync::OnceLock;
-
 use axum::{
     http::{HeaderValue, StatusCode, Uri},
-    response::Response,
+    response::{IntoResponse, Response},
+    body::Body,
 };
-use crate::core::{SpaConfig, SpaHandler, SpaError};
-use regex::Regex;
-
-static PATH_RE: OnceLock<Regex> = OnceLock::new();
-
+use crate::core::SpaHandler;
+use std::borrow::Cow;
 
 pub struct AxumSpa<E: rust_embed::RustEmbed> {
     handler: SpaHandler<E>,
 }
 
 impl<E: rust_embed::RustEmbed> AxumSpa<E> {
-    pub fn new(config: SpaConfig) -> Self {
-        PATH_RE.get_or_init(|| Regex::new(r"/+").unwrap());
+    pub fn new(config: crate::core::SpaConfig) -> Self {
         Self {
             handler: SpaHandler::new(config),
         }
     }
-    
-    pub async fn handle_request(&self, uri: Uri) -> Result<Response, SpaError> {
+
+    pub async fn handle_request(&self, uri: Uri) -> Response {
         let path = uri.path();
-        let clean_path = PATH_RE.get().unwrap().replace_all(path, "/");
-        let (content, mime) = self.handler.get_file(&clean_path)?;
-        let content = content.to_vec();
-        
-        let mime = HeaderValue::from_str(mime)
-            .map_err(|_| SpaError::MimeDetection)?;
-        
-        let mut response = Response::builder()
-            .status(StatusCode::OK)
-            .header("Content-Type", mime.clone());
-        
-        // 缓存优化
-        if !mime.to_str().unwrap_or("").starts_with("text/html") {
-            response = response.header("Cache-Control", "public, max-age=31536000");
+        match self.handler.get_file(path) {
+            Ok((content, mime)) => {
+                let mime = match HeaderValue::from_str(mime) {
+                    Ok(v) => v,
+                    Err(_) => {
+                        return (StatusCode::INTERNAL_SERVER_ERROR, "MIME error").into_response();
+                    }
+                };
+
+                let is_html = mime.to_str().unwrap_or("").starts_with("text/html");
+                let cache = if is_html {
+                    "no-cache"
+                } else {
+                    "public, max-age=31536000"
+                };
+
+                let body = match content {
+                    Cow::Borrowed(b) => Body::from(b),
+                    Cow::Owned(v) => Body::from(v),
+                };
+
+                Response::builder()
+                    .status(StatusCode::OK)
+                    .header("Content-Type", mime)
+                    .header("Cache-Control", cache)
+                    .body(body)
+                    .unwrap()
+            }
+            Err(e) => {
+                tracing::warn!("SPA resource not found: {} - {}", path, e);
+                (StatusCode::NOT_FOUND, "Not Found").into_response()
+            }
         }
-        
-        Ok(response.body(content.into()).unwrap())
     }
 }
+
 #[macro_export]
+#[allow(clippy::crate_in_macro_def)]
 macro_rules! spa {
     ($struct:ident, $path:expr) => {
         spa!($struct, $path, "/", ["index.html"]);
     };
-    
+
     ($struct:ident, $path:expr, $base:expr) => {
         spa!($struct, $path, $base, ["index.html"]);
     };
-    
+
     ($struct:ident, $path:expr, $base:expr, [$($index:expr),*]) => {
         #[derive(rust_embed::RustEmbed)]
         #[folder = $path]
@@ -87,15 +100,7 @@ macro_rules! spa {
                         format!("/{}/{{*path}}", base)
                     };
                     let svr = |uri: axum::http::Uri| async move {
-                            match [<mod_ $struct:lower>]::SPA.get().unwrap().handle_request(uri).await {
-                                Ok(res) => res,
-                                Err(e) => {
-                                    tracing::error!("SPA error: {}", e);
-                                    axum::http::Response::builder()
-                                        .status(axum::http::StatusCode::NOT_FOUND)
-                                        .body(axum::body::Body::empty()).unwrap()
-                                }
-                            }
+                            [<mod_ $struct:lower>]::SPA.get().unwrap().handle_request(uri).await
                         };
                     Router::new()
                         .route(
