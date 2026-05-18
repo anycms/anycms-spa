@@ -1,3 +1,8 @@
+## [0.3.0] - 2026-05-18
+
+### 🚀 Features
+
+- 添加 Salvo 框架支持
 ## [0.2.2] - 2026-05-18
 
 ### 🚜 Refactor
@@ -12,6 +17,7 @@
 ### ⚙️ Miscellaneous Tasks
 
 - 升级依赖版本和代码格式化
+- Release anycms-spa version 0.2.2
 ## [0.2.1] - 2025-08-09
 
 ### 🚀 Features
