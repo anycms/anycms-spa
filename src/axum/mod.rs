@@ -1,5 +1,5 @@
 use axum::{
-    http::{HeaderValue, StatusCode, Uri},
+    http::{HeaderValue, StatusCode, Uri, HeaderMap},
     response::{IntoResponse, Response},
     body::Body,
 };
@@ -17,25 +17,53 @@ impl<E: rust_embed::RustEmbed> AxumSpa<E> {
         }
     }
 
-    pub async fn handle_request(&self, uri: Uri) -> Response {
+    pub async fn handle_request(&self, uri: Uri, headers: &HeaderMap) -> Response {
         let path = uri.path();
         match self.handler.get_file(path) {
-            Ok((content, mime)) => {
-                let mime = match HeaderValue::from_str(mime) {
+            Ok(spa_resp) => {
+                // ETag / 304 check
+                if let Some(if_none_match) = headers.get("If-None-Match").and_then(|v| v.to_str().ok()) {
+                    if crate::core::etag_matches(if_none_match, &spa_resp.etag) {
+                        let cache = if spa_resp.is_html { "no-cache" } else { "public, max-age=31536000" };
+                        return Response::builder()
+                            .status(StatusCode::NOT_MODIFIED)
+                            .header("ETag", &spa_resp.etag)
+                            .header("Cache-Control", cache)
+                            .body(Body::empty())
+                            .unwrap();
+                    }
+                }
+
+                let mime = match HeaderValue::from_str(spa_resp.mime) {
                     Ok(v) => v,
                     Err(_) => {
                         return (StatusCode::INTERNAL_SERVER_ERROR, "MIME error").into_response();
                     }
                 };
 
-                let is_html = mime.to_str().unwrap_or("").starts_with("text/html");
-                let cache = if is_html {
-                    "no-cache"
-                } else {
-                    "public, max-age=31536000"
-                };
+                let cache = if spa_resp.is_html { "no-cache" } else { "public, max-age=31536000" };
 
-                let body = match content {
+                #[cfg(feature = "gzip")]
+                {
+                    let accept_encoding = headers
+                        .get("Accept-Encoding")
+                        .and_then(|v| v.to_str().ok())
+                        .unwrap_or("");
+                    if let Some(ref gzip_data) = spa_resp.gzip_data {
+                        if crate::core::accepts_gzip(accept_encoding) {
+                            return Response::builder()
+                                .status(StatusCode::OK)
+                                .header("Content-Type", mime)
+                                .header("Cache-Control", cache)
+                                .header("ETag", &spa_resp.etag)
+                                .header("Content-Encoding", "gzip")
+                                .body(Body::from(gzip_data.clone()))
+                                .unwrap();
+                        }
+                    }
+                }
+
+                let body = match spa_resp.data {
                     Cow::Borrowed(b) => Body::from(b),
                     Cow::Owned(v) => Body::from(v),
                 };
@@ -44,6 +72,7 @@ impl<E: rust_embed::RustEmbed> AxumSpa<E> {
                     .status(StatusCode::OK)
                     .header("Content-Type", mime)
                     .header("Cache-Control", cache)
+                    .header("ETag", &spa_resp.etag)
                     .body(body)
                     .unwrap()
             }
@@ -99,8 +128,8 @@ macro_rules! spa {
                     } else {
                         format!("/{}/{{*path}}", base)
                     };
-                    let svr = |uri: axum::http::Uri| async move {
-                            [<mod_ $struct:lower>]::SPA.get().unwrap().handle_request(uri).await
+                    let svr = |uri: axum::http::Uri, headers: axum::http::HeaderMap| async move {
+                            [<mod_ $struct:lower>]::SPA.get().unwrap().handle_request(uri, &headers).await
                         };
                     Router::new()
                         .route(

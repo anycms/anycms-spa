@@ -256,6 +256,7 @@ version = "0.3.0"
 dependencies = [
  "actix-web",
  "axum",
+ "flate2",
  "mime_guess",
  "paste",
  "rust-embed",

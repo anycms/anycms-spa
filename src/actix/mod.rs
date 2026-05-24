@@ -15,17 +15,46 @@ impl<E: rust_embed::RustEmbed> ActixSpa<E> {
     pub async fn handle_request(&self, req: HttpRequest) -> HttpResponse {
         let path = req.path();
         match self.handler.get_file(path) {
-            Ok((content, mime)) => {
-                let mut response = HttpResponse::Ok();
-                response.content_type(mime);
+            Ok(spa_resp) => {
+                // ETag / 304 check
+                if let Some(if_none_match) = req.headers().get("If-None-Match").and_then(|v| v.to_str().ok()) {
+                    if crate::core::etag_matches(if_none_match, &spa_resp.etag) {
+                        let mut response = HttpResponse::NotModified();
+                        response.insert_header(("ETag", spa_resp.etag.as_str()));
+                        if spa_resp.is_html {
+                            response.insert_header(("Cache-Control", "no-cache"));
+                        } else {
+                            response.insert_header(("Cache-Control", "public, max-age=31536000"));
+                        }
+                        return response.finish();
+                    }
+                }
 
-                if mime.starts_with("text/html") {
+                let mut response = HttpResponse::Ok();
+                response.content_type(spa_resp.mime);
+                response.insert_header(("ETag", spa_resp.etag.as_str()));
+
+                if spa_resp.is_html {
                     response.insert_header(("Cache-Control", "no-cache"));
                 } else {
                     response.insert_header(("Cache-Control", "public, max-age=31536000"));
                 }
 
-                response.body(content)
+                #[cfg(feature = "gzip")]
+                {
+                    let accept_encoding = req.headers()
+                        .get("Accept-Encoding")
+                        .and_then(|v| v.to_str().ok())
+                        .unwrap_or("");
+                    if let Some(ref gzip_data) = spa_resp.gzip_data {
+                        if crate::core::accepts_gzip(accept_encoding) {
+                            response.insert_header(("Content-Encoding", "gzip"));
+                            return response.body(gzip_data.clone());
+                        }
+                    }
+                }
+
+                response.body(spa_resp.data)
             }
             Err(e) => {
                 tracing::warn!("SPA resource not found: {} - {}", path, e);
