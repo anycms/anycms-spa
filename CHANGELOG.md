@@ -1,8 +1,17 @@
+## [0.5.0] - 2026-05-24
+
+### 🚀 Features
+
+- 添加 Brotli 压缩、安全头注入、自定义错误页面、Range 下载支持
 ## [0.4.0] - 2026-05-24
 
 ### 🚀 Features
 
 - 添加 ETag 缓存和 Gzip 预压缩支持
+
+### ⚙️ Miscellaneous Tasks
+
+- Release anycms-spa version 0.4.0
 ## [0.3.0] - 2026-05-18
 
 ### 🚀 Features
