@@ -1,8 +1,17 @@
+## [0.4.0] - 2026-05-24
+
+### 🚀 Features
+
+- 添加 ETag 缓存和 Gzip 预压缩支持
 ## [0.3.0] - 2026-05-18
 
 ### 🚀 Features
 
 - 添加 Salvo 框架支持
+
+### ⚙️ Miscellaneous Tasks
+
+- Release anycms-spa version 0.3.0
 ## [0.2.2] - 2026-05-18
 
 ### 🚜 Refactor
