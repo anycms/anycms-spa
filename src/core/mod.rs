@@ -285,7 +285,7 @@ fn brotli_compress(data: &[u8]) -> Vec<u8> {
     let mut compressor = brotli::CompressorWriter::new(
         Vec::with_capacity(data.len() / 2),
         4096,
-        11,
+        4,
         22,
     );
     compressor.write_all(data).expect("brotli compression failed");
@@ -358,7 +358,7 @@ impl<E: RustEmbed> SpaHandler<E> {
         if let Some(content) = E::get(&resource_path) {
             let mime = mime_guess::from_path(&resource_path)
                 .first_raw()
-                .ok_or(SpaError::MimeDetection)?;
+                .unwrap_or("application/octet-stream");
             let is_html = mime.starts_with("text/html");
             let etag = format_etag(&content.metadata.sha256_hash());
 
