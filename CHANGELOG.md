@@ -1,8 +1,17 @@
+## [0.6.0] - 2026-05-26
+
+### ⚡ Performance
+
+- 降低 Brotli 压缩级别并改进 MIME 检测容错
 ## [0.5.0] - 2026-05-24
 
 ### 🚀 Features
 
 - 添加 Brotli 压缩、安全头注入、自定义错误页面、Range 下载支持
+
+### ⚙️ Miscellaneous Tasks
+
+- Release anycms-spa version 0.5.0
 ## [0.4.0] - 2026-05-24
 
 ### 🚀 Features
