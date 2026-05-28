@@ -262,6 +262,7 @@ dependencies = [
  "paste",
  "rust-embed",
  "salvo",
+ "sha2",
  "thiserror",
  "tracing",
 ]

@@ -202,6 +202,7 @@ macro_rules! spa {
                         anycms_spa::core::SpaConfig::default()
                             .with_base_path($base)
                             .with_index_files(&[$($index),*])
+                            .with_override_dir($path)
                             $($config)*
                     });
                     [<mod_ $struct:lower>]::SPA.get_or_init(|| anycms_spa::salvo::SalvoSpa::new([<mod_ $struct:lower>]::CONFIG.get().unwrap().clone()));

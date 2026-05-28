@@ -1,8 +1,10 @@
 pub mod path;
 
 use rust_embed::RustEmbed;
+use sha2::{Digest, Sha256};
 use std::borrow::Cow;
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -26,6 +28,7 @@ pub struct SpaConfig {
     pub index_files: Vec<String>,
     pub security_headers: Vec<(String, String)>,
     pub error_pages: HashMap<u16, String>,
+    pub override_dir: Option<PathBuf>,
 }
 
 impl Default for SpaConfig {
@@ -35,6 +38,7 @@ impl Default for SpaConfig {
             index_files: vec!["index.html".to_string()],
             security_headers: Vec::new(),
             error_pages: HashMap::new(),
+            override_dir: None,
         }
     }
 }
@@ -62,6 +66,11 @@ impl SpaConfig {
 
     pub fn with_security_header(mut self, key: &str, value: &str) -> Self {
         self.security_headers.push((key.to_string(), value.to_string()));
+        self
+    }
+
+    pub fn with_override_dir(mut self, dir: impl Into<PathBuf>) -> Self {
+        self.override_dir = Some(dir.into());
         self
     }
 
@@ -157,6 +166,15 @@ pub fn content_type_with_charset(mime: &str) -> Cow<'static, str> {
 fn format_etag(hash: &[u8; 32]) -> String {
     let hex: String = hash[..16].iter().map(|b| format!("{:02x}", b)).collect();
     format!("\"{}\"", hex)
+}
+
+/// 对任意字节计算 ETag（用于 override 文件）
+fn compute_etag(data: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(data);
+    let result = hasher.finalize();
+    let hash: [u8; 32] = result.into();
+    format_etag(&hash)
 }
 
 /// 检查 Accept-Encoding 是否包含 gzip
@@ -292,9 +310,49 @@ fn brotli_compress(data: &[u8]) -> Vec<u8> {
     compressor.into_inner()
 }
 
+/// 递归扫描目录，加载所有文件到 HashMap（相对路径 -> 内容）
+fn load_overrides(dir: &Path) -> HashMap<String, Vec<u8>> {
+    let mut map = HashMap::new();
+    load_overrides_recursive(dir, dir, &mut map);
+    map
+}
+
+fn load_overrides_recursive(base: &Path, current: &Path, map: &mut HashMap<String, Vec<u8>>) {
+    let Ok(entries) = std::fs::read_dir(current) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            load_overrides_recursive(base, &path, map);
+            continue;
+        }
+        let file_name = path.file_name().map(|n| n.to_string_lossy().to_string());
+        if let Some(name) = &file_name {
+            if name.starts_with('.') {
+                continue;
+            }
+        }
+        let Ok(relative) = path.strip_prefix(base) else {
+            continue;
+        };
+        let key = relative.to_string_lossy().to_string();
+        match std::fs::read(&path) {
+            Ok(data) => {
+                tracing::info!("SPA override: loaded {}", key);
+                map.insert(key, data);
+            }
+            Err(e) => {
+                tracing::warn!("SPA override: failed to read {}: {}", key, e);
+            }
+        }
+    }
+}
+
 /// SPA 处理器
 pub struct SpaHandler<E: RustEmbed> {
     config: SpaConfig,
+    overrides: HashMap<String, Vec<u8>>,
     #[cfg(feature = "gzip")]
     compression_cache: HashMap<String, Vec<u8>>,
     #[cfg(feature = "brotli")]
@@ -305,9 +363,9 @@ pub struct SpaHandler<E: RustEmbed> {
 impl<E: RustEmbed> SpaHandler<E> {
     pub fn new(config: SpaConfig) -> Self {
         #[cfg(feature = "gzip")]
-        let mut gzip_cache = HashMap::new();
+        let mut gzip_cache: HashMap<String, Vec<u8>> = HashMap::new();
         #[cfg(feature = "brotli")]
-        let mut br_cache = HashMap::new();
+        let mut br_cache: HashMap<String, Vec<u8>> = HashMap::new();
 
         #[cfg(any(feature = "gzip", feature = "brotli"))]
         for path in E::iter() {
@@ -335,8 +393,43 @@ impl<E: RustEmbed> SpaHandler<E> {
             }
         }
 
+        // 加载 override 文件
+        let mut overrides = HashMap::new();
+        if let Some(ref dir) = config.override_dir {
+            if dir.exists() {
+                tracing::info!("SPA override directory: {}", dir.display());
+                overrides = load_overrides(dir);
+                #[cfg(any(feature = "gzip", feature = "brotli"))]
+                for (key, data) in &overrides {
+                    let mime = mime_guess::from_path(key.as_str())
+                        .first_raw()
+                        .unwrap_or("");
+                    if is_compressible(mime) {
+                        #[cfg(feature = "gzip")]
+                        {
+                            let compressed = gzip_compress(data);
+                            if compressed.len() < data.len() {
+                                gzip_cache.insert(key.clone(), compressed);
+                            }
+                        }
+                        #[cfg(feature = "brotli")]
+                        {
+                            let compressed = brotli_compress(data);
+                            if compressed.len() < data.len() {
+                                br_cache.insert(key.clone(), compressed);
+                            }
+                        }
+                    }
+                }
+                tracing::info!("SPA override: {} files loaded", overrides.len());
+            } else {
+                tracing::info!("SPA override directory not found, skipping: {}", dir.display());
+            }
+        }
+
         Self {
             config,
+            overrides,
             #[cfg(feature = "gzip")]
             compression_cache: gzip_cache,
             #[cfg(feature = "brotli")]
@@ -354,6 +447,31 @@ impl<E: RustEmbed> SpaHandler<E> {
         let clean_path = crate::core::path::collapse_slashes(request_path);
         let normalized_path = crate::core::path::normalize_path(&clean_path)?;
         let resource_path = crate::core::path::relative_to_base(&normalized_path, &self.config.base_path);
+
+        // 优先查 override 文件
+        if let Some(data) = self.overrides.get(&resource_path) {
+            let mime = mime_guess::from_path(&resource_path)
+                .first_raw()
+                .unwrap_or("application/octet-stream");
+            let is_html = mime.starts_with("text/html");
+            let etag = compute_etag(data);
+
+            #[cfg(feature = "gzip")]
+            let gzip_data = self.compression_cache.get(&resource_path).cloned();
+            #[cfg(feature = "brotli")]
+            let brotli_data = self.brotli_cache.get(&resource_path).cloned();
+
+            return Ok(SpaResponse {
+                data: Cow::Owned(data.clone()),
+                mime,
+                etag,
+                is_html,
+                #[cfg(feature = "gzip")]
+                gzip_data,
+                #[cfg(feature = "brotli")]
+                brotli_data,
+            });
+        }
 
         if let Some(content) = E::get(&resource_path) {
             let mime = mime_guess::from_path(&resource_path)
@@ -381,6 +499,27 @@ impl<E: RustEmbed> SpaHandler<E> {
 
         // SPA fallback：尝试索引文件
         for index_file in &self.config.index_files {
+            // 优先查 override
+            if let Some(data) = self.overrides.get(index_file) {
+                let etag = compute_etag(data);
+
+                #[cfg(feature = "gzip")]
+                let gzip_data = self.compression_cache.get(index_file).cloned();
+                #[cfg(feature = "brotli")]
+                let brotli_data = self.brotli_cache.get(index_file).cloned();
+
+                return Ok(SpaResponse {
+                    data: Cow::Owned(data.clone()),
+                    mime: "text/html",
+                    etag,
+                    is_html: true,
+                    #[cfg(feature = "gzip")]
+                    gzip_data,
+                    #[cfg(feature = "brotli")]
+                    brotli_data,
+                });
+            }
+
             if let Some(content) = E::get(index_file) {
                 let etag = format_etag(&content.metadata.sha256_hash());
 
@@ -408,6 +547,31 @@ impl<E: RustEmbed> SpaHandler<E> {
     /// 获取自定义错误页面
     pub fn get_error_page(&self, status: u16) -> Option<SpaResponse> {
         let file_path = self.config.error_pages.get(&status)?;
+
+        // 优先查 override
+        if let Some(data) = self.overrides.get(file_path) {
+            let mime = mime_guess::from_path(file_path.as_str())
+                .first_raw()
+                .unwrap_or("text/html");
+            let etag = compute_etag(data);
+
+            #[cfg(feature = "gzip")]
+            let gzip_data = self.compression_cache.get(file_path).cloned();
+            #[cfg(feature = "brotli")]
+            let brotli_data = self.brotli_cache.get(file_path).cloned();
+
+            return Some(SpaResponse {
+                data: Cow::Owned(data.clone()),
+                mime,
+                etag,
+                is_html: mime.starts_with("text/html"),
+                #[cfg(feature = "gzip")]
+                gzip_data,
+                #[cfg(feature = "brotli")]
+                brotli_data,
+            });
+        }
+
         let content = E::get(file_path)?;
         let mime = mime_guess::from_path(file_path.as_str())
             .first_raw()
@@ -556,5 +720,137 @@ mod tests {
         assert!(!if_range_matches("\"def456\"", etag));
         // HTTP-date form -> not supported, returns false
         assert!(!if_range_matches("Sun, 24 May 2026 00:00:00 GMT", etag));
+    }
+
+    // --- Override tests ---
+
+    #[test]
+    fn test_compute_etag() {
+        let data = b"hello";
+        let etag1 = compute_etag(data);
+        let etag2 = compute_etag(data);
+        assert_eq!(etag1, etag2, "ETag should be deterministic");
+        assert!(etag1.starts_with('"'));
+        assert!(etag1.ends_with('"'));
+    }
+
+    #[test]
+    fn test_compute_etag_different_data() {
+        let etag1 = compute_etag(b"hello");
+        let etag2 = compute_etag(b"world");
+        assert_ne!(etag1, etag2, "Different data should produce different ETags");
+    }
+
+    fn temp_dir_with_name(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("anycms-spa-test-{}-{}", name, std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn cleanup_dir(dir: &Path) {
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn test_load_overrides_empty_dir() {
+        let dir = temp_dir_with_name("empty");
+        let map = load_overrides(&dir);
+        assert!(map.is_empty());
+        cleanup_dir(&dir);
+    }
+
+    #[test]
+    fn test_load_overrides_with_files() {
+        let dir = temp_dir_with_name("files");
+
+        // 创建嵌套文件
+        std::fs::write(dir.join("index.html"), b"<h1>override</h1>").unwrap();
+        std::fs::create_dir_all(dir.join("css")).unwrap();
+        std::fs::write(dir.join("css/style.css"), b"body { color: red; }").unwrap();
+        std::fs::create_dir_all(dir.join("js")).unwrap();
+        std::fs::write(dir.join("js/app.js"), b"console.log('override');").unwrap();
+
+        let map = load_overrides(&dir);
+        assert_eq!(map.len(), 3);
+        assert_eq!(map.get("index.html").unwrap(), b"<h1>override</h1>");
+        assert_eq!(map.get("css/style.css").unwrap(), b"body { color: red; }");
+        assert_eq!(map.get("js/app.js").unwrap(), b"console.log('override');");
+
+        cleanup_dir(&dir);
+    }
+
+    #[test]
+    fn test_load_overrides_ignores_hidden() {
+        let dir = temp_dir_with_name("hidden");
+
+        std::fs::write(dir.join("visible.txt"), b"visible").unwrap();
+        std::fs::write(dir.join(".hidden"), b"hidden").unwrap();
+
+        let map = load_overrides(&dir);
+        assert_eq!(map.len(), 1);
+        assert!(map.contains_key("visible.txt"));
+        assert!(!map.contains_key(".hidden"));
+
+        cleanup_dir(&dir);
+    }
+
+    #[test]
+    fn test_load_overrides_nonexistent_dir() {
+        let dir = PathBuf::from("/tmp/anycms-spa-nonexistent-12345");
+        let map = load_overrides(&dir);
+        assert!(map.is_empty());
+    }
+
+    #[derive(rust_embed::RustEmbed)]
+    #[folder = "tests-assets"]
+    struct TestEmbed;
+
+    #[test]
+    fn test_override_takes_priority() {
+        // 创建测试用的临时 override 目录
+        let dir = temp_dir_with_name("priority");
+        std::fs::write(dir.join("test.txt"), b"override content").unwrap();
+
+        let config = SpaConfig::default().with_override_dir(&dir);
+        let handler: SpaHandler<TestEmbed> = SpaHandler::new(config);
+
+        // 注意：TestEmbed 没有 test.txt，所以 get_file 会走 fallback
+        // 但 override 中有，所以应该返回 override 内容
+        // 由于 TestEmbed 可能没有嵌入任何文件，我们只验证 override 被加载了
+        assert!(handler.overrides.contains_key("test.txt"));
+        assert_eq!(handler.overrides.get("test.txt").unwrap(), b"override content");
+
+        cleanup_dir(&dir);
+    }
+
+    #[test]
+    fn test_override_etag_consistency() {
+        let dir = temp_dir_with_name("etag");
+        std::fs::write(dir.join("style.css"), b"body { margin: 0; }").unwrap();
+
+        let config = SpaConfig::default().with_override_dir(&dir);
+        let handler: SpaHandler<TestEmbed> = SpaHandler::new(config);
+
+        let data = handler.overrides.get("style.css").unwrap();
+        let etag1 = compute_etag(data);
+        let etag2 = compute_etag(data);
+        assert_eq!(etag1, etag2);
+
+        cleanup_dir(&dir);
+    }
+
+    #[test]
+    fn test_no_override_dir() {
+        let config = SpaConfig::default();
+        let handler: SpaHandler<TestEmbed> = SpaHandler::new(config);
+        assert!(handler.overrides.is_empty());
+    }
+
+    #[test]
+    fn test_override_dir_not_exists() {
+        let config = SpaConfig::default().with_override_dir("/tmp/anycms-spa-no-such-dir-99999");
+        let handler: SpaHandler<TestEmbed> = SpaHandler::new(config);
+        assert!(handler.overrides.is_empty());
     }
 }

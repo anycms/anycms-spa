@@ -21,6 +21,7 @@ thiserror = "2.0.17"
 tracing = "0.1.44"
 flate2 = { version = "1", optional = true }
 brotli = { version = "7", optional = true }
+sha2 = "0.10"
 
 [features]
 default = []
