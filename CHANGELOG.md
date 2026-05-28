@@ -1,8 +1,17 @@
+## [0.7.0] - 2026-05-28
+
+### 🚀 Features
+
+- 添加文件系统覆盖层，支持运行时替换嵌入资源
 ## [0.6.0] - 2026-05-26
 
 ### ⚡ Performance
 
 - 降低 Brotli 压缩级别并改进 MIME 检测容错
+
+### ⚙️ Miscellaneous Tasks
+
+- Release anycms-spa version 0.6.0
 ## [0.5.0] - 2026-05-24
 
 ### 🚀 Features
