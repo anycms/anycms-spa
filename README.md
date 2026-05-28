@@ -15,6 +15,7 @@
 - **Vary 头**：有压缩变体时自动添加 `Vary: Accept-Encoding`
 - **charset**：text/* 类资源自动追加 `; charset=utf-8`
 - **Range 下载**（断点续传）：支持 `Range` / `If-Range` 请求，返回 `206 Partial Content`
+- **文件系统覆盖**：启动时自动扫描 assets 目录，同名文件覆盖嵌入资源，支持新增文件、压缩、ETag
 
 ## 使用方法
 
@@ -177,7 +178,7 @@ async fn main() {
 
 ### ETag
 
-所有响应自动携带 `ETag` header（基于 `rust_embed` 内置的 SHA256 哈希，零额外计算）。客户端发送 `If-None-Match` 时返回 `304 Not Modified`，避免重复传输。
+所有响应自动携带 `ETag` header。嵌入资源使用 `rust_embed` 内置的 SHA256 哈希（零额外计算），覆盖文件使用 `sha2` crate 计算相同格式的 ETag。客户端发送 `If-None-Match` 时返回 `304 Not Modified`，避免重复传输。
 
 ### 压缩
 
@@ -255,6 +256,37 @@ curl -H 'Range: bytes=0-49' -H 'If-Range: "<etag>"' http://127.0.0.1:8080/css/st
 
 支持三种 `Range` 格式：`bytes=start-end`、`bytes=start-`（开放结尾）、`bytes=-suffix`（末尾 N 字节）。`If-Range` 支持 ETag 匹配。
 
+### 文件系统覆盖
+
+`spa!` 宏默认以配置的资源目录（如 `"assets"`）作为覆盖目录。启动时自动扫描该目录：
+
+- **同名文件覆盖**：文件系统中的文件优先于嵌入资源
+- **新增文件**：嵌入资源中不存在的文件也可通过文件系统提供
+- **压缩支持**：覆盖文件同样支持 gzip/brotli 预压缩
+- **无侵入**：目录不存在或为空时，行为与纯嵌入模式完全一致
+
+```bash
+# 部署二进制后，在运行目录创建 assets 目录即可覆盖
+mkdir -p assets
+echo '<h1>Patched!</h1>' > assets/index.html
+./my-app
+# → 日志: SPA override directory: assets
+# → 日志: SPA override: loaded index.html
+# → 日志: SPA override: 1 files loaded
+```
+
+自定义覆盖目录：
+
+```rust
+// 默认：覆盖目录 = "assets"（即 spa! 宏配置的资源路径）
+spa!(Spa, "assets");
+
+// 自定义覆盖目录
+spa!(Spa, "assets", {
+    .with_override_dir("/var/www/overrides")
+});
+```
+
 ## 完整示例
 
 查看 [examples/](examples/) 目录获取可运行的完整项目：
@@ -263,4 +295,5 @@ curl -H 'Range: bytes=0-49' -H 'If-Range: "<etag>"' http://127.0.0.1:8080/css/st
 - [actix-gzip-example](examples/actix-gzip-example/) — Actix-web + Gzip 压缩
 - [axum-spa-example](examples/axum-spa-example/) — Axum 基础用法
 - [axum-compression-example](examples/axum-compression-example/) — Axum + Brotli + Gzip + 安全头 + 自定义 404 + Range 下载
+- [axum-override-example](examples/axum-override-example/) — Axum + 文件系统覆盖
 - [salvo-spa-example](examples/salvo-spa-example/) — Salvo 基础用法
