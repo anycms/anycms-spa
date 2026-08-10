@@ -1,8 +1,17 @@
+## [0.7.1] - 2026-08-10
+
+### 📚 Documentation
+
+- 更新 README，添加文件系统覆盖功能文档
 ## [0.7.0] - 2026-05-28
 
 ### 🚀 Features
 
 - 添加文件系统覆盖层，支持运行时替换嵌入资源
+
+### ⚙️ Miscellaneous Tasks
+
+- Release anycms-spa version 0.7.0
 ## [0.6.0] - 2026-05-26
 
 ### ⚡ Performance
