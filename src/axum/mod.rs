@@ -189,8 +189,37 @@ macro_rules! spa {
 
     // 4 args + config: spa!(Spa, "assets", "/", ["index.html"], { .with_xxx() })
     ($struct:ident, $path:expr, $base:expr, [$($index:expr),*], { $($config:tt)* } $(,)?) => {
+        spa!($struct, $path, $base, [$($index),*], { $($config)* }, exclude: []);
+    };
+
+    // path + exclude: spa!(Spa, "assets", exclude: ["*.gz", "*.br"])
+    ($struct:ident, $path:expr, exclude: [$($ex:expr),*] $(,)?) => {
+        spa!($struct, $path, "/", ["index.html"], {}, exclude: [$($ex),*]);
+    };
+
+    // path + config + exclude
+    ($struct:ident, $path:expr, { $($config:tt)* }, exclude: [$($ex:expr),*] $(,)?) => {
+        spa!($struct, $path, "/", ["index.html"], { $($config)* }, exclude: [$($ex),*]);
+    };
+
+    // path + base + exclude
+    ($struct:ident, $path:expr, $base:expr, exclude: [$($ex:expr),*] $(,)?) => {
+        spa!($struct, $path, $base, ["index.html"], {}, exclude: [$($ex),*]);
+    };
+
+    // path + base + index + exclude
+    ($struct:ident, $path:expr, $base:expr, [$($index:expr),*], exclude: [$($ex:expr),*] $(,)?) => {
+        spa!($struct, $path, $base, [$($index),*], {}, exclude: [$($ex),*]);
+    };
+
+    // 5 args: the terminal arm — everything forwards here. The exclude globs
+    // become rust-embed #[exclude] attributes, so precompressed companions
+    // (*.gz/*.br) can stay in the folder for CDN/nginx lanes without being
+    // embedded into the binary.
+    ($struct:ident, $path:expr, $base:expr, [$($index:expr),*], { $($config:tt)* }, exclude: [$($ex:expr),*] $(,)?) => {
         #[derive(rust_embed::RustEmbed)]
         #[folder = $path]
+        $(#[exclude = $ex])*
         pub struct $struct;
         paste::paste!{
 
