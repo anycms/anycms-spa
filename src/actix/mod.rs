@@ -174,7 +174,7 @@ macro_rules! spa {
         $(#[exclude = $ex])*
         pub struct $struct;
 
-        paste::paste!{
+        $crate::__macro_dependencies::paste::paste!{
 
             pub mod [<mod_ $struct:lower>] {
                 pub static CONFIG: std::sync::OnceLock<anycms_spa::core::SpaConfig> = std::sync::OnceLock::new();

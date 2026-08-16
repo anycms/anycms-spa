@@ -20,3 +20,11 @@ pub mod salvo;
 
 // 通用错误类型
 pub use core::{SpaError, SpaConfig};
+/// Internal dependencies referenced by the `spa!` macro's expansion. The
+/// macro body must not rely on `paste` being visible in the *invoking* crate
+/// (serde's `__private` pattern), so it is re-exported here and the macro
+/// refers to it as `$crate::__macro_dependencies::paste`.
+#[doc(hidden)]
+pub mod __macro_dependencies {
+    pub use paste;
+}
