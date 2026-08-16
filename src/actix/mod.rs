@@ -178,7 +178,7 @@ macro_rules! spa {
 
             pub mod [<mod_ $struct:lower>] {
                 pub static CONFIG: std::sync::OnceLock<anycms_spa::core::SpaConfig> = std::sync::OnceLock::new();
-                pub static SPA: std::sync::OnceLock<anycms_spa::actix::ActixSpa<crate::$struct>> = std::sync::OnceLock::new();
+                pub static SPA: std::sync::OnceLock<anycms_spa::actix::ActixSpa<super::$struct>> = std::sync::OnceLock::new();
             }
 
             impl $struct {

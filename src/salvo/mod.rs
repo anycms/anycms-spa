@@ -214,7 +214,7 @@ macro_rules! spa {
 
             pub mod [<mod_ $struct:lower>] {
                 pub static CONFIG: std::sync::OnceLock<anycms_spa::core::SpaConfig> = std::sync::OnceLock::new();
-                pub static SPA: std::sync::OnceLock<anycms_spa::salvo::SalvoSpa<crate::$struct>> = std::sync::OnceLock::new();
+                pub static SPA: std::sync::OnceLock<anycms_spa::salvo::SalvoSpa<super::$struct>> = std::sync::OnceLock::new();
 
                 #[::salvo::handler]
                 pub async fn handle(req: &mut ::salvo::Request, res: &mut ::salvo::Response) {

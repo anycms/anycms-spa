@@ -27,6 +27,26 @@ fn embedded_paths<E: RustEmbed>() -> Vec<String> {
     E::iter().map(|p| p.to_string()).collect()
 }
 
+// The macro must be invocable from a nested module, not just the crate root —
+// the generated SPA static refers to the struct via `super::`, which resolves
+// at any depth (0.7.3 fix; `crate::$struct` only worked at the root).
+mod nested {
+    use anycms_spa::spa;
+
+    #[cfg(feature = "axum")]
+    spa!(NestedSpa, "tests/fixtures/site", exclude: ["*.gz", "*.br"]);
+    #[cfg(feature = "actix")]
+    spa!(NestedSpa, "tests/fixtures/site", exclude: ["*.gz", "*.br"]);
+    #[cfg(feature = "salvo")]
+    spa!(NestedSpa, "tests/fixtures/site", exclude: ["*.gz", "*.br"]);
+
+    #[cfg(any(feature = "axum", feature = "actix", feature = "salvo"))]
+    pub(super) fn embedded_paths() -> Vec<String> {
+        use rust_embed::RustEmbed;
+        NestedSpa::iter().map(|p| p.to_string()).collect()
+    }
+}
+
 #[test]
 fn exclude_globs_are_not_embedded() {
     let paths = embedded_paths::<ExcludedSpa>();
@@ -46,4 +66,14 @@ fn legacy_shapes_still_embed_everything() {
     let paths = embedded_paths::<PlainSpa>();
     assert!(paths.contains(&"app.js.gz".to_string()));
     assert!(paths.contains(&"app.js.br".to_string()));
+}
+
+#[test]
+fn macro_works_inside_nested_module() {
+    let paths = nested::embedded_paths();
+    assert!(paths.contains(&"index.html".to_string()));
+    assert!(
+        !paths.iter().any(|p| p.ends_with(".gz") || p.ends_with(".br")),
+        "nested-module invocation leaked companions: {paths:?}"
+    );
 }
